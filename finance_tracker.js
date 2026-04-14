@@ -10,7 +10,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
     getFirestore, collection, doc, setDoc, getDoc, addDoc, updateDoc,
-    deleteDoc, query, where, orderBy, onSnapshot, getDocs,
+    deleteDoc, query, where, onSnapshot, getDocs,
     serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -545,12 +545,10 @@ function setupRealtimeListeners() {
         unsubscribeTransactions();
     }
     
-    // Set up real-time listener for transactions
+    // Set up real-time listener for transactions (sort client-side to avoid composite index requirement)
     const transactionsQuery = query(
         collection(db, 'transactions'),
-        where('userId', '==', currentUser.uid),
-        orderBy('date', 'desc'),
-        orderBy('createdAt', 'desc')
+        where('userId', '==', currentUser.uid)
     );
 
     unsubscribeTransactions = onSnapshot(transactionsQuery, (snapshot) => {
@@ -561,6 +559,14 @@ function setupRealtimeListeners() {
                 transaction.icon = getCategoryIcon(transaction.category);
                 userTransactions.push(transaction);
             });
+
+            // Sort client-side by date desc, then by createdAt desc
+            userTransactions.sort((a, b) => {
+                if (b.date !== a.date) return b.date.localeCompare(a.date);
+                const aTime = a.createdAt?.seconds || 0;
+                const bTime = b.createdAt?.seconds || 0;
+                return bTime - aTime;
+            });
             
             // Update UI
             loadTransactions();
@@ -570,12 +576,7 @@ function setupRealtimeListeners() {
             
         }, (error) => {
             console.error('Real-time updates error:', error);
-            if (error.code === 'failed-precondition') {
-                showToast('Loading transactions...', 'info');
-                loadTransactionsWithoutOrder();
-            } else {
-                showToast('Error loading transactions', 'error');
-            }
+            showToast('Error loading transactions: ' + error.message, 'error');
         });
 }
 
